@@ -1,0 +1,5 @@
+{
+  "name": "Online Russian Checkers",
+  "description": "Real-time multiplayer Russian Checkers using Firebase Firestore. Features max-capture rules, flying kings, and instant link sharing.",
+  "requestFramePermissions": []
+}
