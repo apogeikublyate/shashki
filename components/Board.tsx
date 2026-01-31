@@ -428,7 +428,10 @@ const Board: React.FC<BoardProps> = ({
         
         const style = getVisualPos(r, c);
         
-        // Correct logic: Numbers always on visual Left, Letters always on visual Bottom
+        // Correct visual positioning logic:
+        // Numbers always on the LEFT side of the visual container.
+        // Letters always on the BOTTOM side of the visual container.
+        
         const showNumber = rotated ? c === 7 : c === 0; 
         const showLetter = rotated ? r === 0 : r === 7;
         

@@ -29,7 +29,7 @@ export const createGame = async (
   
   // TTL: 24 hours from now
   const oneDayMs = 24 * 60 * 60 * 1000;
-  const expireDate = new Date(Date.now() + oneDayMs); // Firestore needs Date object or timestamp
+  const expireDate = new Date(Date.now() + oneDayMs); 
 
   const gameData: GameData = {
     board: JSON.stringify(board),
@@ -64,10 +64,8 @@ export const joinGame = async (gameId: string, playerId: string): Promise<void> 
     
     const data = gameDoc.data() as GameData;
     
-    // Check if player is already in the game
     if (data.players.white === playerId || data.players.black === playerId) return;
 
-    // Join strictly to the empty slot
     if (data.players.black === null && data.players.white !== null) {
       transaction.update(gameRef, {
         'players.black': playerId,
@@ -103,30 +101,25 @@ export const performMove = async (
   const gameRef = db.collection('games').doc(gameId);
   const currentBoard: BoardState = JSON.parse(gameData.board);
   
-  // Need to check if it's a pawn move to reset draw counter
   const movingPiece = currentBoard[move.from.row][move.from.col];
   const isPawnMove = movingPiece && !movingPiece.isKing;
   const isCapture = move.captures.length > 0;
 
   const newBoard = applyMove(currentBoard, move);
 
-  // --- IMMEDIATE WIN/DRAW DETECTION ---
   let status = gameData.status;
   let winner = null;
 
-  // 1. Check if next player has any moves
+  // Check Win condition (no moves left for opponent)
   const nextPlayerMoves = calculateAllowedMoves(newBoard, nextTurn);
   if (nextPlayerMoves.length === 0) {
       status = GameStatus.FINISHED;
-      // The player who made the move (current gameData.turn) is the winner
       winner = gameData.turn; 
   }
 
-  // 2. Check for 1v1 King Draw
-  // Count pieces
+  // Check 1v1 King Draw
   let whiteCount = 0, blackCount = 0;
   let whiteKings = 0, blackKings = 0;
-  
   for(let r=0; r<8; r++) {
       for(let c=0; c<8; c++) {
           const p = newBoard[r][c];
@@ -141,8 +134,6 @@ export const performMove = async (
       status = GameStatus.DRAW;
   }
   
-  // --- END DETECTION ---
-
   await db.runTransaction(async (transaction) => {
     const freshDoc = await transaction.get(gameRef);
     if (!freshDoc.exists) throw new Error("Game missing");
@@ -152,13 +143,11 @@ export const performMove = async (
       throw new Error("Game state has changed, reload recommended");
     }
 
-    // Logic for Draw (50 moves without capture or pawn move = 25 turns each)
     let newHalfMoveClock = freshData.halfMoveClock + 1;
     if (isPawnMove || isCapture) {
       newHalfMoveClock = 0;
     }
 
-    // Only apply 50-move rule if game isn't already finished by logic above
     if (status !== GameStatus.FINISHED && status !== GameStatus.DRAW) {
          if (newHalfMoveClock >= 60) {
             status = GameStatus.DRAW;
@@ -168,7 +157,7 @@ export const performMove = async (
     const oneDayMs = 24 * 60 * 60 * 1000;
     const newExpireAt = Date.now() + oneDayMs;
 
-    // Construct Previous State (Snapshot of what it is NOW before update)
+    // Save previous state for Undo
     const previousState = {
         board: freshData.board,
         turn: freshData.turn,
@@ -182,7 +171,7 @@ export const performMove = async (
       lastMove: { 
         from: move.from, 
         to: move.to, 
-        path: move.path, // Save path for animation
+        path: move.path,
         ts: Date.now() 
       },
       halfMoveClock: newHalfMoveClock,
@@ -190,9 +179,8 @@ export const performMove = async (
       winner: winner,
       version: freshData.version + 1,
       expireAt: newExpireAt,
-      // Save history and clear any pending requests since a move was made
       previousState: previousState,
-      takebackRequest: null 
+      takebackRequest: null // Clear any old requests
     });
   });
 };
@@ -200,12 +188,14 @@ export const performMove = async (
 // --- TAKEBACK LOGIC ---
 
 export const requestTakeback = async (gameId: string, playerId: string) => {
+    // Increment version to force all clients to see the update
     await db.collection('games').doc(gameId).update({
         takebackRequest: {
             requesterId: playerId,
             createdAt: Date.now()
-        }
-    });
+        },
+        version: firebase.firestore.FieldValue.increment(1)
+    } as any);
 };
 
 export const resolveTakeback = async (gameId: string, accepted: boolean) => {
@@ -217,27 +207,29 @@ export const resolveTakeback = async (gameId: string, accepted: boolean) => {
         const data = doc.data() as GameData;
         
         if (!accepted) {
-            // Just clear the request
-            transaction.update(gameRef, { takebackRequest: null });
+            transaction.update(gameRef, { 
+                takebackRequest: null,
+                version: data.version + 1
+            });
             return;
         }
 
-        // If accepted, we must have a previous state to revert to
         if (data.previousState) {
             transaction.update(gameRef, {
                 board: data.previousState.board,
                 turn: data.previousState.turn,
                 halfMoveClock: data.previousState.halfMoveClock,
                 lastMove: data.previousState.lastMove || firebase.firestore.FieldValue.delete(),
-                // Clear history (cannot undo twice in a row for simplicity, or keep it if we wanted multi-undo)
-                // For MVP, we clear previousState to prevent loops unless we stored a deeper stack.
-                previousState: null, 
+                previousState: null, // Clear history after undo
                 takebackRequest: null,
                 version: data.version + 1
             });
         } else {
-             // Fallback if state missing
-             transaction.update(gameRef, { takebackRequest: null });
+             // Fallback
+             transaction.update(gameRef, { 
+                 takebackRequest: null,
+                 version: data.version + 1
+             });
         }
     });
 };
@@ -263,35 +255,23 @@ export const resignGame = async (gameId: string, playerId: string) => {
     });
 };
 
-export const declareWinner = async (gameId: string, winner: PlayerColor) => {
-    const gameRef = db.collection('games').doc(gameId);
-    await gameRef.update({
-        status: GameStatus.FINISHED,
-        winner: winner,
-        version: firebase.firestore.FieldValue.increment(1)
-    } as any);
-};
-
 export const proposeRematch = async (oldGameId: string, myPlayerId: string, myOldColor: PlayerColor, isRandom: boolean) => {
     const gameRef = db.collection('games').doc(oldGameId);
     
-    // Use transaction to prevent race condition where both players create a new game
     return await db.runTransaction(async (transaction) => {
         const doc = await transaction.get(gameRef);
         if (!doc.exists) throw new Error("Game not found");
         
         const data = doc.data() as GameData;
         
-        // If rematchId already exists, it means the opponent created it. Return it!
+        // If rematchId already exists (opponent created it), return it
         if (data.rematchId) {
             return data.rematchId;
         }
 
-        // Otherwise, create a new game
         const newColor = myOldColor === PlayerColor.WHITE ? PlayerColor.BLACK : PlayerColor.WHITE;
         const newGameId = await createGame(myPlayerId, newColor, isRandom);
         
-        // Update the old game with the link
         transaction.update(gameRef, {
             rematchId: newGameId
         });

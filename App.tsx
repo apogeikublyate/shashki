@@ -40,6 +40,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [rematchLoading, setRematchLoading] = useState(false);
   const [selectedColorMode, setSelectedColorMode] = useState<ColorSelection>(PlayerColor.WHITE);
+  const [takebackLoading, setTakebackLoading] = useState(false);
   
   const [iProposedRematch, setIProposedRematch] = useState(false);
 
@@ -213,17 +214,22 @@ const App: React.FC = () => {
     setRematchLoading(true);
 
     if (gameData?.rematchId) {
+        // Accept Rematch
         switchToNewGame(gameData.rematchId, undefined);
     } else {
+        // Propose Rematch
         try {
             const newColor = myColor === PlayerColor.WHITE ? PlayerColor.BLACK : PlayerColor.WHITE;
             const isRandom = !!gameData?.metadata?.isRandomColor;
-            setIProposedRematch(true);
+            
+            setIProposedRematch(true); // Optimistically set this
+            
             const newGameId = await proposeRematch(gameId!, playerId, myColor!, isRandom);
             
-            const optimisticData = createOptimisticGameData(newColor, isRandom, initializeBoard());
-            switchToNewGame(newGameId, optimisticData);
-            toast.success("Реванш создан!");
+            // If newGameId matches existing (rare race), handling is same as accept
+            if (newGameId !== gameData?.rematchId) {
+               // We created it, wait for opponent
+            }
         } catch (e) {
             console.error(e);
             toast.error("Не удалось создать реванш");
@@ -247,6 +253,8 @@ const App: React.FC = () => {
   };
 
   const handleRequestTakeback = async () => {
+      if (takebackLoading) return;
+
       // Local Game (Bot) - Instant Undo
       if (isLocalGame && gameData) {
           if (localGameSnapshot) {
@@ -260,11 +268,14 @@ const App: React.FC = () => {
 
       // Online Game - Request
       if(!gameId) return;
+      
+      setTakebackLoading(true);
       try {
           await requestTakeback(gameId, playerId);
           toast.success("Запрос на возврат хода отправлен");
       } catch (e) {
           toast.error("Ошибка отправки запроса");
+          setTakebackLoading(false);
       }
   };
 
@@ -601,11 +612,24 @@ const App: React.FC = () => {
   const myRoleText = effectiveIsSpectator ? "Зритель" : (isLocalGame ? "Вы" : (myColor === PlayerColor.WHITE ? "Белые" : "Черные"));
 
   // Undo / Takeback Status
-  const takebackIncoming = gameData?.takebackRequest?.requesterId && gameData.takebackRequest.requesterId !== playerId;
+  const takebackIncoming = !!gameData?.takebackRequest?.requesterId && gameData.takebackRequest.requesterId !== playerId;
   const takebackSent = gameData?.takebackRequest?.requesterId === playerId;
+  
+  // Clear loading state if request was successfully processed (reflected in gameData)
+  if (takebackSent && takebackLoading) {
+      setTakebackLoading(false);
+  } else if (!takebackSent && takebackLoading && !isLocalGame) {
+      // If we were loading but the request is gone and we are not the sender, it means it was rejected or handled
+      setTakebackLoading(false);
+  }
+
   const canRequestTakeback = isLocalGame 
        ? (gameData?.status === GameStatus.ACTIVE && !!localGameSnapshot) 
        : (!takebackSent && !takebackIncoming && gameData?.status === GameStatus.ACTIVE && !!gameData?.previousState);
+
+  // Rematch Status
+  const opponentProposedRematch = !!gameData?.rematchId && !iProposedRematch;
+  const waitingForOpponentRematch = !!gameData?.rematchId && iProposedRematch;
 
   return (
     <div className="h-[100dvh] w-screen bg-[#1e1b18] overflow-hidden relative pt-safe flex items-center justify-center">
@@ -739,8 +763,8 @@ const App: React.FC = () => {
                             <span className="text-sm font-bold">Соперник просит вернуть ход</span>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => handleResolveTakeback(true)} className="flex-1 py-2 bg-green-800/50 hover:bg-green-700 text-green-200 border border-green-700 rounded-lg font-bold text-sm transition">✔ Вернуть</button>
-                            <button onClick={() => handleResolveTakeback(false)} className="flex-1 py-2 bg-red-900/40 hover:bg-red-900/60 text-red-300 border border-red-800 rounded-lg font-bold text-sm transition">✖ Отказать</button>
+                            <button onClick={() => handleResolveTakeback(true)} className="flex-1 py-3 bg-green-800/50 hover:bg-green-700 text-green-200 border border-green-700 rounded-lg font-bold text-sm uppercase tracking-wider transition">✔ Вернуть</button>
+                            <button onClick={() => handleResolveTakeback(false)} className="flex-1 py-3 bg-red-900/40 hover:bg-red-900/60 text-red-300 border border-red-800 rounded-lg font-bold text-sm uppercase tracking-wider transition">✖ Отказать</button>
                         </div>
                     </div>
                 )}
@@ -781,15 +805,19 @@ const App: React.FC = () => {
                         <>
                             <button 
                                 onClick={handleRequestTakeback} 
-                                disabled={!canRequestTakeback} 
-                                className="py-3 px-2 bg-[#3d3632] hover:bg-[#4a423d] disabled:opacity-30 disabled:cursor-not-allowed rounded-xl text-stone-300 border-2 border-stone-700/50 flex items-center justify-center transition shadow-lg group"
+                                disabled={!canRequestTakeback || takebackLoading} 
+                                className={`py-3 px-2 bg-[#3d3632] hover:bg-[#4a423d] disabled:opacity-30 disabled:cursor-not-allowed rounded-xl text-stone-300 border-2 border-stone-700/50 flex items-center justify-center transition shadow-lg group ${takebackLoading ? 'animate-pulse' : ''}`}
                                 title="Вернуть ход"
                             >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-stone-400 group-hover:text-white transition-colors">
-                                <path d="M3 10h10a5 5 0 0 1 5 5v2" />
-                                <path d="M3 10l6-6" />
-                                <path d="M3 10l6 6" />
-                            </svg>
+                            {takebackLoading ? (
+                                <div className="w-5 h-5 rounded-full border-2 border-stone-500 border-t-amber-600 animate-spin"></div>
+                            ) : (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-stone-400 group-hover:text-white transition-colors">
+                                    <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+                                    <path d="M3 10l6-6" />
+                                    <path d="M3 10l6 6" />
+                                </svg>
+                            )}
                             </button>
                             <button onClick={() => { if (isLocalGame) { setGameData(prev => prev ? ({ ...prev, status: GameStatus.FINISHED, winner: PlayerColor.BLACK }) : null); } else { resignGame(gameId!, playerId); } }} className="py-3 px-2 bg-red-900/30 hover:bg-red-900/50 border-2 border-red-900/30 rounded-xl text-red-200 font-bold text-xs uppercase tracking-wider transition shadow-lg">Сдаться</button>
                         </>
@@ -799,16 +827,19 @@ const App: React.FC = () => {
                     {(gameData?.status === GameStatus.FINISHED || gameData?.status === GameStatus.DRAW) && !effectiveIsSpectator && !isLocalGame && (
                         <button 
                         onClick={handleRematch} 
-                        disabled={(iProposedRematch && !!gameData.rematchId) || rematchLoading} 
-                        className={`col-span-2 py-3 px-4 rounded-xl font-bold text-xs lg:text-sm uppercase tracking-wider transition shadow-lg border-2 
+                        disabled={(waitingForOpponentRematch) || rematchLoading} 
+                        className={`col-span-2 py-3 px-4 rounded-xl font-bold text-xs lg:text-sm uppercase tracking-wider transition-all shadow-lg border-2 
                             ${rematchLoading ? 'bg-stone-800 border-stone-700 text-stone-500 cursor-wait' : 
-                            (gameData.rematchId && !iProposedRematch) ? 'bg-green-700 hover:bg-green-600 text-white border-green-600/50 animate-pulse' : 
-                            (iProposedRematch && gameData.rematchId) ? 'bg-stone-700 text-stone-400 border-stone-600 cursor-default' : 
+                            opponentProposedRematch ? 'bg-green-700 hover:bg-green-600 text-white border-green-600/50 animate-pulse scale-105' : 
+                            waitingForOpponentRematch ? 'bg-stone-700 text-stone-400 border-stone-600 cursor-default' : 
                             'bg-amber-700 hover:bg-amber-600 text-white border-amber-600/50'}`
                         }>
                             {rematchLoading 
                             ? (gameData.rematchId ? "Входим..." : "Создание...") 
-                            : (gameData.rematchId ? (iProposedRematch ? "Реванш создан" : "Принять Реванш!") : "Предложить Реванш")}
+                            : (opponentProposedRematch 
+                                ? "⚡ ПРИНЯТЬ РЕВАНШ!" 
+                                : (waitingForOpponentRematch ? "Ожидание соперника..." : "Предложить Реванш")
+                            )}
                         </button>
                     )}
                     
