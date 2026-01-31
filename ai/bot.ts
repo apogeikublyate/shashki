@@ -3,20 +3,21 @@ import { calculateAllowedMoves, applyMove } from '../rules/checkersRules';
 
 // --- Configuration ---
 const MAX_DEPTH = 3; 
-// Limit how deep Quiescence search can go to prevent stack overflow/lag in wild positions
-const MAX_Q_DEPTH = 4; 
+// Reduced from 4 to 2 to prevent freezing on complex capture chains
+const MAX_Q_DEPTH = 2; 
 const INFINITY = 1000000;
+const TIMEOUT_MS = 500; // Max execution time before forced return
 
 // --- Heuristic Weights ---
 const SCORES = {
     WIN: 100000,
-    KING: 800,        // Significantly increased King value to encourage promotion
-    PIECE: 100,       // Standard piece value
-    BACK_ROW: 40,     // Bonus for keeping home row intact
-    CENTER: 15,       // Control center
-    MOBILITY: 2,      // Number of available moves
-    ADVANCE: 8,       // Bonus for moving forward
-    DEFENSE: 10       // Bonus for pieces protecting each other (simple check)
+    KING: 800,        
+    PIECE: 100,       
+    BACK_ROW: 40,     
+    CENTER: 15,       
+    MOBILITY: 2,      
+    ADVANCE: 8,       
+    DEFENSE: 10       
 };
 
 /**
@@ -61,10 +62,12 @@ const evaluateBoard = (board: BoardState, color: PlayerColor): number => {
     return score;
 };
 
+// Start time tracker
+let searchStartTime = 0;
+
 /**
  * Quiescence Search:
  * Extends the search beyond MAX_DEPTH specifically for "loud" positions (captures).
- * This prevents the horizon effect where the bot stops thinking just before being captured back.
  */
 const quiescence = (
     board: BoardState,
@@ -74,18 +77,13 @@ const quiescence = (
     botColor: PlayerColor,
     qDepth: number
 ): number => {
+    // Timeout check
+    if (Date.now() - searchStartTime > TIMEOUT_MS) {
+        return evaluateBoard(board, botColor);
+    }
+
     const turn = isMaximizing ? botColor : (botColor === PlayerColor.WHITE ? PlayerColor.BLACK : PlayerColor.WHITE);
     
-    // 1. Stand-pat evaluation (Lazy eval)
-    // If we just stop searching now, what is the score?
-    // Note: In Checkers, if a capture IS available, you usually MUST take it (depending on rules).
-    // Our rules/checkersRules.ts enforces mandatory captures.
-    // So 'stand-pat' is only valid if there are NO captures available, or if the side to move is not in "Check" (not applicable to checkers same way).
-    // However, for standard Minimax Q-search, we assume we can choose NOT to capture if capturing makes things worse? 
-    // BUT in Russian Checkers, capture is mandatory.
-    // So: If captures exist, we CANNOT stand pat. We MUST traverse captures.
-    // If no captures exist, we simply return the static eval.
-
     const allMoves = calculateAllowedMoves(board, turn);
     const isCaptureAvailable = allMoves.length > 0 && allMoves[0].captures.length > 0;
 
@@ -93,14 +91,8 @@ const quiescence = (
         return evaluateBoard(board, botColor);
     }
     
-    // If captures are available, we cannot stand pat. We must explore.
-    // Note: Usually Q-Search allows standing pat to prevent "suicide" extension, but mandatory capture rules override this.
-    // However, if we assume the opponent played the previous move creating a threat, we need to see the resolution.
-    
     if (isMaximizing) {
         let maxEval = -INFINITY;
-        // Only look at moves. Since isCaptureAvailable is true, allMoves contains ONLY captures due to calculateAllowedMoves logic.
-        
         // Sorting captures by number of pieces taken (greedy heuristic)
         allMoves.sort((a, b) => b.captures.length - a.captures.length);
 
@@ -138,6 +130,11 @@ const minimax = (
     isMaximizing: boolean,
     botColor: PlayerColor
 ): number => {
+    // Check timeout
+    if (Date.now() - searchStartTime > TIMEOUT_MS) {
+        return evaluateBoard(board, botColor);
+    }
+
     // 1. Base case: Depth reached -> Enter Quiescence Search
     if (depth === 0) {
         return quiescence(board, alpha, beta, isMaximizing, botColor, MAX_Q_DEPTH);
@@ -188,6 +185,7 @@ export const getSmartBotMove = (board: BoardState, botColor: PlayerColor): Move 
     // Forced capture check optimization
     if (validMoves.length === 1) return validMoves[0];
 
+    searchStartTime = Date.now();
     let bestMove: Move | null = null;
     let bestValue = -INFINITY;
 
@@ -196,13 +194,13 @@ export const getSmartBotMove = (board: BoardState, botColor: PlayerColor): Move 
     validMoves.sort((a, b) => b.captures.length - a.captures.length);
 
     for (const move of validMoves) {
+        // Break early if timeout happened in previous iteration
+        if (Date.now() - searchStartTime > TIMEOUT_MS) break;
+
         const nextBoard = applyMove(board, move);
         // Next is minimizing player (human)
         const moveValue = minimax(nextBoard, MAX_DEPTH - 1, -INFINITY, INFINITY, false, botColor);
         
-        // Simple console log to debug bot thinking (optional)
-        // console.log(`Move ${move.from.row},${move.from.col} -> ${move.to.row},${move.to.col} : ${moveValue}`);
-
         if (moveValue > bestValue) {
             bestValue = moveValue;
             bestMove = move;

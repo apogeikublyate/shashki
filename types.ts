@@ -44,6 +44,7 @@ export interface GameData {
   lastMove?: {
     from: Position;
     to: Position;
+    path?: Position[]; // Added for animations
     ts: number;
   };
   // Counter for 50-move rule (moves without capture or pawn move)
@@ -56,6 +57,20 @@ export interface GameData {
   metadata?: {
     isRandomColor: boolean;
   };
+
+  // --- Takeback / Undo Logic ---
+  // Stores the state BEFORE the last move was made
+  previousState?: {
+    board: string;
+    turn: PlayerColor;
+    halfMoveClock: number;
+    lastMove?: { from: Position; to: Position; path?: Position[]; ts: number };
+  } | null;
+
+  takebackRequest?: {
+    requesterId: string;
+    createdAt: number;
+  } | null;
 }
 
 export interface PlayerIdentity {

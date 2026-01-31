@@ -19,16 +19,14 @@ export const initializeBoard = (): BoardState => {
   return board;
 };
 
-const isValidPos = (r: number, c: number) => r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE;
+// Inlined logic for performance in hot paths
+// const isValidPos = (r: number, c: number) => r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE;
 
 // Deep copy needed because we simulate moves during recursion
 const cloneBoard = (board: BoardState): BoardState => board.map(row => row.map(p => p ? { ...p } : null));
 
 /**
  * Calculates all valid moves for a specific player on the given board.
- * UPDATED RULE:
- * 1. Forced captures (if any capture exists, non-captures are invalid).
- * 2. REMOVED Max capture rule: You can choose ANY capture path, even if it captures fewer pieces than another option.
  */
 export const calculateAllowedMoves = (board: BoardState, turn: PlayerColor): Move[] => {
   let allMoves: Move[] = [];
@@ -58,7 +56,6 @@ export const calculateAllowedMoves = (board: BoardState, turn: PlayerColor): Mov
   }
 
   // 2. Filter: If ANY capture exists anywhere on the board, only return capture moves.
-  // We do NOT filter by the length of the capture (allowing 1 vs 2 choice).
   if (hasCaptures) {
     return allMoves.filter(m => m.captures.length > 0);
   }
@@ -78,7 +75,7 @@ const getSimpleMoves = (board: BoardState, from: Position, piece: Piece): Move[]
 
     if (piece.isKing) {
       // Flying king: can move any distance
-      while (isValidPos(r, c)) {
+      while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
         if (board[r][c] !== null) break; // Blocked
         moves.push({
           from,
@@ -92,7 +89,7 @@ const getSimpleMoves = (board: BoardState, from: Position, piece: Piece): Move[]
       }
     } else {
       // Simple piece
-      if (isValidPos(r, c) && board[r][c] === null) {
+      if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === null) {
         const isPromotion = (piece.color === PlayerColor.WHITE && r === 0) || 
                             (piece.color === PlayerColor.BLACK && r === 7);
         moves.push({
@@ -128,7 +125,7 @@ const getCaptureMoves = (
       let c = currentPos.col + dc;
       
       // Scan along diagonal
-      while (isValidPos(r, c)) {
+      while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
         const cell = board[r][c];
         
         // If we hit a piece...
@@ -146,7 +143,7 @@ const getCaptureMoves = (
           let landR = r + dr;
           let landC = c + dc;
           
-          while (isValidPos(landR, landC)) {
+          while (landR >= 0 && landR < BOARD_SIZE && landC >= 0 && landC < BOARD_SIZE) {
             const destCell = board[landR][landC];
             // We can land if cell is empty OR if it is the starting square (looping back)
             const isStart = landR === originalStart.row && landC === originalStart.col;
@@ -198,7 +195,7 @@ const getCaptureMoves = (
       const landR = currentPos.row + 2 * dr;
       const landC = currentPos.col + 2 * dc;
 
-      if (isValidPos(landR, landC)) {
+      if (landR >= 0 && landR < BOARD_SIZE && landC >= 0 && landC < BOARD_SIZE) {
         const midPiece = board[captureR][captureC];
         const destCell = board[landR][landC];
         
