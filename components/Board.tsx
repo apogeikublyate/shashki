@@ -289,7 +289,7 @@ const Board: React.FC<BoardProps> = ({
       }
   };
 
-  const handlePieceClick = (e: React.MouseEvent, r: number, c: number) => {
+  const handlePieceClick = (e: React.MouseEvent) => {
     e.stopPropagation();
   };
 
@@ -324,12 +324,12 @@ const Board: React.FC<BoardProps> = ({
              transform: `translate(${dragState.currentX}px, ${dragState.currentY}px)`,
              zIndex: 50,
              cursor: 'grabbing',
-             pointerEvents: 'none' as const 
+             pointerEvents: 'none' as React.CSSProperties['pointerEvents']
         } : {
              zIndex: isGhost ? 20 : 30, 
              cursor: isGhost ? 'default' : 'pointer',
              touchAction: 'none',
-             pointerEvents: isGhost ? 'none' : 'auto' 
+             pointerEvents: (isGhost ? 'none' : 'auto') as React.CSSProperties['pointerEvents']
         };
 
         const animationClass = isDraggingThis ? 'scale-110 shadow-2xl' : (isGhost ? 'scale-100' : 'transition-transform duration-100 ease-out hover:scale-105');
@@ -340,7 +340,7 @@ const Board: React.FC<BoardProps> = ({
             className={`absolute w-[12.5%] h-[12.5%] flex items-center justify-center will-change-transform ${extraClasses}`}
             style={{ ...style, ...transformStyle }}
             onPointerDown={!isGhost ? (e) => handlePiecePointerDown(e, r, c) : undefined}
-            onClick={!isGhost ? (e) => handlePieceClick(e, r, c) : undefined}
+            onClick={!isGhost ? handlePieceClick : undefined}
             onPointerEnter={!isGhost ? () => handleSquarePointerEnter(r, c) : undefined}
             onPointerLeave={!isGhost ? handleSquarePointerLeave : undefined}
           >
@@ -389,11 +389,6 @@ const Board: React.FC<BoardProps> = ({
 
     const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     const numbers = ['8', '7', '6', '5', '4', '3', '2', '1'];
-    
-    if (rotated) {
-        letters.reverse();
-        numbers.reverse();
-    }
 
     let activeMoves: Move[] = [];
     if (activeRow !== undefined && activeCol !== undefined) {
@@ -432,8 +427,11 @@ const Board: React.FC<BoardProps> = ({
         const selectClass = isSelected ? 'bg-[#5e4b35]/60 ring-inset ring-4 ring-[#ffff00]/50' : '';
         
         const style = getVisualPos(r, c);
-        const showNumber = c === 0; 
-        const showLetter = r === 7;
+        
+        // Correct logic: Numbers always on visual Left, Letters always on visual Bottom
+        const showNumber = rotated ? c === 7 : c === 0; 
+        const showLetter = rotated ? r === 0 : r === 7;
+        
         const textColor = isDark ? 'text-[#E3C193]' : 'text-[#8B5A2B]';
 
         if (isFinalDest && activePiece && currentMove) {
@@ -488,7 +486,7 @@ const Board: React.FC<BoardProps> = ({
       }
     }
 
-    fadingPieces.forEach((fp, idx) => {
+    fadingPieces.forEach((fp) => {
         pieces.push(renderPiece(fp.piece, fp.r, fp.c, true, undefined, 'animate-fadeOut opacity-0'));
     });
 

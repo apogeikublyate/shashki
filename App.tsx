@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { GameData, PlayerColor, Position, GameStatus, BoardState, Piece } from './types';
-import { createGame, joinGame, subscribeToGame, performMove, getPlayerIdentity, resignGame, declareWinner, proposeRematch, requestTakeback, resolveTakeback } from './services/gameService';
+import { GameData, PlayerColor, Position, GameStatus, BoardState } from './types';
+import { createGame, joinGame, subscribeToGame, performMove, getPlayerIdentity, resignGame, proposeRematch, requestTakeback, resolveTakeback } from './services/gameService';
 import { calculateAllowedMoves, applyMove, initializeBoard } from './rules/checkersRules';
 import { getSmartBotMove } from './ai/bot';
 import { isConfigured } from './services/firebase';
@@ -405,13 +405,6 @@ const App: React.FC = () => {
   }, [gameData, isLocalGame, board, isEditorMode]);
 
   // Move Handling
-  const handleCopyLink = () => {
-    let link = window.location.href;
-    if (gameId && !link.includes(gameId)) link = `${link}${link.includes('?') ? '&' : '?'}game=${gameId}`;
-    navigator.clipboard.writeText(link);
-    toast.success("Ссылка скопирована!");
-  };
-
   const executeMove = async (from: Position, to: Position) => {
     if (isEditorMode) return;
     if (!gameData || !isMyTurn) return;
@@ -592,7 +585,7 @@ const App: React.FC = () => {
   if (gameData?.status === GameStatus.WAITING && !isLocalGame && isParticipant) {
     return (
       <div className="min-h-[100dvh] bg-[#1e1b18] flex items-center justify-center">
-         <GameLobby gameId={gameId} gameData={gameData} playerId={playerId} onCancel={handleReturnToMenu} />
+         <GameLobby gameId={gameId!} gameData={gameData} playerId={playerId} onCancel={handleReturnToMenu} />
          <Toaster position="top-center" toastOptions={{ style: { background: '#2a2622', color: '#e3c193', border: '1px solid #444' } }}/>
       </div>
     );
