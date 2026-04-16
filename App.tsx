@@ -159,8 +159,27 @@ const App: React.FC = () => {
   };
 
   const handleStartBotGame = () => {
-    // If in editor mode, use editorBoard, else standard
-    const boardToUse = isEditorMode ? editorBoard : initializeBoard();
+    let boardToUse: BoardState;
+    let initialBoardStr: string | undefined;
+
+    // 1. Restart: If we are clicking "Play Again" and have gameData with stored initial board
+    if (gameData && isLocalGame && gameData.metadata?.initialBoard) {
+        try {
+            boardToUse = JSON.parse(gameData.metadata.initialBoard);
+            initialBoardStr = gameData.metadata.initialBoard;
+        } catch (e) {
+            boardToUse = initializeBoard();
+        }
+    } 
+    // 2. Editor: If starting fresh from Editor
+    else if (isEditorMode) {
+        boardToUse = editorBoard;
+        initialBoardStr = JSON.stringify(editorBoard);
+    } 
+    // 3. Standard
+    else {
+        boardToUse = initializeBoard();
+    }
     
     const oneDayMs = 24 * 60 * 60 * 1000;
     const newData: GameData = {
@@ -173,6 +192,10 @@ const App: React.FC = () => {
       halfMoveClock: 0,
       createdAt: Date.now(),
       expireAt: Date.now() + oneDayMs,
+      metadata: { 
+          isRandomColor: false,
+          initialBoard: initialBoardStr // Persist this for restarts
+      },
       takebackRequest: null,
       previousState: null
     };
@@ -219,7 +242,6 @@ const App: React.FC = () => {
     } else {
         // Propose Rematch
         try {
-            const newColor = myColor === PlayerColor.WHITE ? PlayerColor.BLACK : PlayerColor.WHITE;
             const isRandom = !!gameData?.metadata?.isRandomColor;
             
             setIProposedRematch(true); // Optimistically set this
@@ -381,21 +403,7 @@ const App: React.FC = () => {
          toast.error("Бот выиграл!");
       }
 
-      // Check Draw
-      let whiteCount = 0, blackCount = 0, whiteKings = 0, blackKings = 0;
-      for(let r=0; r<8; r++) {
-         for(let c=0; c<8; c++) {
-            const p = nextBoard[r][c];
-            if(p) {
-               if(p.color === PlayerColor.WHITE) { whiteCount++; if(p.isKing) whiteKings++; }
-               else { blackCount++; if(p.isKing) blackKings++; }
-            }
-         }
-      }
-      if (whiteCount === 1 && whiteKings === 1 && blackCount === 1 && blackKings === 1) {
-          status = GameStatus.DRAW;
-          toast("Ничья! (Дамка против Дамки)", { icon: '🤝' });
-      }
+      // Note: Immediate 1v1 draw check removed here too.
 
       const nextGameData: GameData = {
         ...gameData,
@@ -451,30 +459,13 @@ const App: React.FC = () => {
 
         if (isLocalGame) {
            pendingMoveRef.current = false;
-           // Local win/draw logic is handled in the bot effect (since bot replies) 
-           // BUT if playing local PvP (not implemented yet) or bot is next, we wait.
-           // However, if HUMAN move ends game, we must check here.
+           // Local win check
            const botMoves = calculateAllowedMoves(nextBoard, PlayerColor.BLACK);
            if (botMoves.length === 0) {
                setGameData({ ...nextGameData, status: GameStatus.FINISHED, winner: PlayerColor.WHITE });
                toast.success("Вы победили!");
            }
-           
-           let whiteCount = 0, blackCount = 0, whiteKings = 0, blackKings = 0;
-            for(let r=0; r<8; r++) {
-                for(let c=0; c<8; c++) {
-                    const p = nextBoard[r][c];
-                    if(p) {
-                    if(p.color === PlayerColor.WHITE) { whiteCount++; if(p.isKing) whiteKings++; }
-                    else { blackCount++; if(p.isKing) blackKings++; }
-                    }
-                }
-            }
-            if (whiteCount === 1 && whiteKings === 1 && blackCount === 1 && blackKings === 1) {
-                setGameData({ ...nextGameData, status: GameStatus.DRAW });
-                toast("Ничья! (Дамка против Дамки)", { icon: '🤝' });
-            }
-
+           // Removed local immediate draw check too
            return;
         }
 
@@ -825,22 +816,53 @@ const App: React.FC = () => {
                     
                     {/* END GAME CONTROLS */}
                     {(gameData?.status === GameStatus.FINISHED || gameData?.status === GameStatus.DRAW) && !effectiveIsSpectator && !isLocalGame && (
-                        <button 
-                        onClick={handleRematch} 
-                        disabled={(waitingForOpponentRematch) || rematchLoading} 
-                        className={`col-span-2 py-3 px-4 rounded-xl font-bold text-xs lg:text-sm uppercase tracking-wider transition-all shadow-lg border-2 
-                            ${rematchLoading ? 'bg-stone-800 border-stone-700 text-stone-500 cursor-wait' : 
-                            opponentProposedRematch ? 'bg-green-700 hover:bg-green-600 text-white border-green-600/50 animate-pulse scale-105' : 
-                            waitingForOpponentRematch ? 'bg-stone-700 text-stone-400 border-stone-600 cursor-default' : 
-                            'bg-amber-700 hover:bg-amber-600 text-white border-amber-600/50'}`
-                        }>
-                            {rematchLoading 
-                            ? (gameData.rematchId ? "Входим..." : "Создание...") 
-                            : (opponentProposedRematch 
-                                ? "⚡ ПРИНЯТЬ РЕВАНШ!" 
-                                : (waitingForOpponentRematch ? "Ожидание соперника..." : "Предложить Реванш")
+                        <div className="col-span-2 flex gap-1 h-full">
+                            <button 
+                            onClick={handleRematch} 
+                            disabled={(waitingForOpponentRematch) || rematchLoading} 
+                            className={`flex-1 py-3 px-4 rounded-l-xl ${!(opponentProposedRematch || waitingForOpponentRematch) ? 'rounded-r-xl' : ''} font-bold text-xs lg:text-sm uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 flex items-center justify-center gap-2
+                                ${rematchLoading ? 'bg-stone-800 border-stone-700 text-stone-500 cursor-wait' : 
+                                opponentProposedRematch ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.6)] animate-pulse-fast ring-2 ring-emerald-500/50 ring-offset-2 ring-offset-[#1e1b18] scale-[1.02]' : 
+                                waitingForOpponentRematch ? 'bg-stone-800 text-stone-400 border-stone-600 cursor-default shadow-inner' : 
+                                'bg-amber-700 hover:bg-amber-600 text-white border-amber-500/50'}`
+                            }>
+                                {rematchLoading 
+                                ? (gameData.rematchId ? "Входим..." : "Создание...") 
+                                : (opponentProposedRematch 
+                                    ? (
+                                        <span className="flex items-center">
+                                          <span className="mr-2 text-xl">⚡</span>
+                                          {"РЕВАНШ".split('').map((char, i) => (
+                                            <span key={i} className="inline-block animate-jump" style={{ animationDelay: `${i * 0.05}s` }}>
+                                              {char === ' ' ? '\u00A0' : char}
+                                            </span>
+                                          ))}
+                                        </span>
+                                      )
+                                    : (waitingForOpponentRematch ? (
+                                        <>
+                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-stone-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Предложение отправлено
+                                        </>
+                                    ) : "Реванш")
+                                )}
+                            </button>
+                            {(opponentProposedRematch || waitingForOpponentRematch) && (
+                                <button
+                                    onClick={handleReturnToMenu}
+                                    className="w-10 lg:w-12 bg-red-900/40 hover:bg-red-800/80 border-2 border-red-900/60 rounded-r-xl flex items-center justify-center text-red-400 hover:text-red-200 transition-colors shadow-[0_0_15px_rgba(0,0,0,0.5)]"
+                                    title="Отменить/Отклонить"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
                             )}
-                        </button>
+                        </div>
                     )}
                     
                     {(gameData?.status === GameStatus.FINISHED || gameData?.status === GameStatus.DRAW) && isLocalGame && (
