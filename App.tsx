@@ -238,7 +238,13 @@ const App: React.FC = () => {
 
     if (gameData?.rematchId) {
         // Accept Rematch
-        switchToNewGame(gameData.rematchId, undefined);
+        try {
+            await joinGame(gameData.rematchId, playerId);
+            switchToNewGame(gameData.rematchId, undefined);
+        } catch (e) {
+            console.error(e);
+            switchToNewGame(gameData.rematchId, undefined);
+        }
     } else {
         // Propose Rematch
         try {
@@ -786,18 +792,18 @@ const App: React.FC = () => {
                 )}
                 
                 {/* Buttons Row */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 px-4 lg:px-0 mt-auto pb-4 lg:pb-0">
+                <div className="flex flex-col lg:flex-row gap-2 lg:gap-3 px-4 lg:px-0 mt-auto pb-4 lg:pb-0 w-full mb-2 lg:mb-0 max-w-[100vw]">
                     
                     {/* MENU */}
-                    <button onClick={handleReturnToMenu} disabled={rematchLoading} className="py-3 px-2 bg-[#3d3632] hover:bg-[#4a423d] rounded-xl text-stone-300 font-bold text-xs uppercase tracking-wider transition shadow-lg border-2 border-stone-700/50">Меню</button>
+                    <button onClick={handleReturnToMenu} disabled={rematchLoading} className="py-3 px-4 lg:px-6 bg-[#3d3632] hover:bg-[#4a423d] rounded-xl text-stone-300 font-bold text-xs uppercase tracking-wider transition shadow-lg border-2 border-stone-700/50 flex-none shrink-0 w-full lg:w-auto order-last lg:order-first mt-2 lg:mt-0">Меню</button>
                     
                     {/* ACTIVE GAME CONTROLS */}
                     {gameData?.status === GameStatus.ACTIVE && !gameData.winner && !effectiveIsSpectator && (
-                        <>
+                        <div className="flex gap-2 lg:gap-3 flex-1 h-[52px]">
                             <button 
                                 onClick={handleRequestTakeback} 
                                 disabled={!canRequestTakeback || takebackLoading} 
-                                className={`py-3 px-2 bg-[#3d3632] hover:bg-[#4a423d] disabled:opacity-30 disabled:cursor-not-allowed rounded-xl text-stone-300 border-2 border-stone-700/50 flex items-center justify-center transition shadow-lg group ${takebackLoading ? 'animate-pulse' : ''}`}
+                                className={`flex-1 bg-[#3d3632] hover:bg-[#4a423d] disabled:opacity-30 disabled:cursor-not-allowed rounded-xl text-stone-300 border-2 border-stone-700/50 flex items-center justify-center transition shadow-lg group ${takebackLoading ? 'animate-pulse' : ''}`}
                                 title="Вернуть ход"
                             >
                             {takebackLoading ? (
@@ -810,17 +816,17 @@ const App: React.FC = () => {
                                 </svg>
                             )}
                             </button>
-                            <button onClick={() => { if (isLocalGame) { setGameData(prev => prev ? ({ ...prev, status: GameStatus.FINISHED, winner: PlayerColor.BLACK }) : null); } else { resignGame(gameId!, playerId); } }} className="py-3 px-2 bg-red-900/30 hover:bg-red-900/50 border-2 border-red-900/30 rounded-xl text-red-200 font-bold text-xs uppercase tracking-wider transition shadow-lg">Сдаться</button>
-                        </>
+                            <button onClick={() => { if (isLocalGame) { setGameData(prev => prev ? ({ ...prev, status: GameStatus.FINISHED, winner: PlayerColor.BLACK }) : null); } else { resignGame(gameId!, playerId); } }} className="flex-[2] bg-red-900/30 hover:bg-red-900/50 border-2 border-red-900/30 rounded-xl text-red-200 font-bold text-xs uppercase tracking-wider transition shadow-lg">Сдаться</button>
+                        </div>
                     )}
                     
                     {/* END GAME CONTROLS */}
                     {(gameData?.status === GameStatus.FINISHED || gameData?.status === GameStatus.DRAW) && !effectiveIsSpectator && !isLocalGame && (
-                        <div className="col-span-2 flex gap-1 h-full">
+                        <div className="flex flex-1 gap-1 min-h-[52px] w-full">
                             <button 
                             onClick={handleRematch} 
                             disabled={(waitingForOpponentRematch) || rematchLoading} 
-                            className={`flex-1 py-3 px-4 rounded-l-xl ${!(opponentProposedRematch || waitingForOpponentRematch) ? 'rounded-r-xl' : ''} font-bold text-xs lg:text-sm uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 flex items-center justify-center gap-2
+                            className={`flex-1 py-1 px-2 rounded-l-xl ${!(opponentProposedRematch || waitingForOpponentRematch) ? 'rounded-r-xl' : ''} font-bold text-xs lg:text-sm uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 flex items-center justify-center gap-1 lg:gap-2 min-w-0
                                 ${rematchLoading ? 'bg-stone-800 border-stone-700 text-stone-500 cursor-wait' : 
                                 opponentProposedRematch ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.6)] animate-pulse-fast ring-2 ring-emerald-500/50 ring-offset-2 ring-offset-[#1e1b18] scale-[1.02]' : 
                                 waitingForOpponentRematch ? 'bg-stone-800 text-stone-400 border-stone-600 cursor-default shadow-inner' : 
@@ -830,22 +836,24 @@ const App: React.FC = () => {
                                 ? (gameData.rematchId ? "Входим..." : "Создание...") 
                                 : (opponentProposedRematch 
                                     ? (
-                                        <span className="flex items-center">
-                                          <span className="mr-2 text-xl">⚡</span>
-                                          {"РЕВАНШ".split('').map((char, i) => (
-                                            <span key={i} className="inline-block animate-jump" style={{ animationDelay: `${i * 0.05}s` }}>
-                                              {char === ' ' ? '\u00A0' : char}
-                                            </span>
-                                          ))}
+                                        <span className="flex items-center min-w-0">
+                                          <span className="mr-1 lg:mr-2 text-lg lg:text-xl shrink-0">⚡</span>
+                                          <span className="whitespace-nowrap overflow-hidden text-ellipsis">
+                                            {"РЕВАНШ".split('').map((char, i) => (
+                                              <span key={i} className="inline-block animate-jump" style={{ animationDelay: `${i * 0.05}s` }}>
+                                                {char === ' ' ? '\u00A0' : char}
+                                              </span>
+                                            ))}
+                                          </span>
                                         </span>
                                       )
                                     : (waitingForOpponentRematch ? (
                                         <>
-                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-stone-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <svg className="animate-spin -ml-1 mr-1 lg:mr-2 h-4 w-4 text-stone-400 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>
-                                            Предложение отправлено
+                                            <span className="whitespace-nowrap overflow-hidden text-ellipsis">Предложение отправлено</span>
                                         </>
                                     ) : "Реванш")
                                 )}
@@ -853,10 +861,10 @@ const App: React.FC = () => {
                             {(opponentProposedRematch || waitingForOpponentRematch) && (
                                 <button
                                     onClick={handleReturnToMenu}
-                                    className="w-10 lg:w-12 bg-red-900/40 hover:bg-red-800/80 border-2 border-red-900/60 rounded-r-xl flex items-center justify-center text-red-400 hover:text-red-200 transition-colors shadow-[0_0_15px_rgba(0,0,0,0.5)]"
+                                    className="w-14 lg:w-16 bg-red-900/40 hover:bg-red-800/80 border-2 border-red-900/60 rounded-r-xl flex items-center justify-center text-red-400 hover:text-red-200 transition-colors shadow-[0_0_15px_rgba(0,0,0,0.5)] shrink-0"
                                     title="Отменить/Отклонить"
                                 >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
                                         <line x1="18" y1="6" x2="6" y2="18"></line>
                                         <line x1="6" y1="6" x2="18" y2="18"></line>
                                     </svg>
@@ -866,7 +874,7 @@ const App: React.FC = () => {
                     )}
                     
                     {(gameData?.status === GameStatus.FINISHED || gameData?.status === GameStatus.DRAW) && isLocalGame && (
-                        <button onClick={handleStartBotGame} className="col-span-2 py-3 px-4 bg-amber-700 hover:bg-amber-600 rounded-xl text-white font-bold text-xs lg:text-sm uppercase tracking-wider transition shadow-lg border-2 border-amber-600/50">Играть снова</button>
+                        <button onClick={handleStartBotGame} className="flex-1 py-3 px-4 bg-amber-700 hover:bg-amber-600 rounded-xl text-white font-bold text-xs lg:text-sm uppercase tracking-wider transition shadow-lg border-2 border-amber-600/50">Играть снова</button>
                     )}
                 </div>
                 </>

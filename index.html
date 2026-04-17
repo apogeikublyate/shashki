@@ -15,6 +15,16 @@
               boardDark: '#B58863',
               pieceWhite: '#F0F0F0',
               pieceBlack: '#202020',
+            },
+            keyframes: {
+              jump: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-4px)' },
+              }
+            },
+            animation: {
+              'jump': 'jump 2s ease-in-out infinite',
+              'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             }
           }
         }
@@ -33,7 +43,6 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-stone-900 text-stone-100 h-screen w-screen overflow-hidden">
     <div id="root" class="h-full w-full"></div>

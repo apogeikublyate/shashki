@@ -55,7 +55,6 @@ const JoinGameScreen: React.FC<JoinGameScreenProps> = ({ gameData, onJoin }) => 
                         {isRandom ? "Случайный цвет" : (myPotentialColor === PlayerColor.WHITE ? "Вы играете Белыми" : "Вы играете Черными")}
                      </div>
                      <div className="text-stone-500 text-sm flex flex-col gap-1">
-                        <span>{isRandom ? "Цвет определится при старте" : "Роль назначена создателем"}</span>
                         <div className="flex items-center gap-2 mt-1">
                              <span className="text-xs font-bold bg-stone-800 px-2 py-0.5 rounded border border-stone-700">∞ Без времени</span>
                         </div>

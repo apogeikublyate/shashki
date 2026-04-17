@@ -117,22 +117,8 @@ export const performMove = async (
       winner = gameData.turn; 
   }
 
-  // Check 1v1 King Draw
-  let whiteCount = 0, blackCount = 0;
-  let whiteKings = 0, blackKings = 0;
-  for(let r=0; r<8; r++) {
-      for(let c=0; c<8; c++) {
-          const p = newBoard[r][c];
-          if(p) {
-              if(p.color === PlayerColor.WHITE) { whiteCount++; if(p.isKing) whiteKings++; }
-              else { blackCount++; if(p.isKing) blackKings++; }
-          }
-      }
-  }
-
-  if (status !== GameStatus.FINISHED && whiteCount === 1 && whiteKings === 1 && blackCount === 1 && blackKings === 1) {
-      status = GameStatus.DRAW;
-  }
+  // NOTE: Immediate 1v1 draw check removed to allow winning captures.
+  // The 50-move rule (halfMoveClock) handles the draw condition.
   
   await db.runTransaction(async (transaction) => {
     const freshDoc = await transaction.get(gameRef);
@@ -148,6 +134,7 @@ export const performMove = async (
       newHalfMoveClock = 0;
     }
 
+    // 50-move rule (60 half-moves)
     if (status !== GameStatus.FINISHED && status !== GameStatus.DRAW) {
          if (newHalfMoveClock >= 60) {
             status = GameStatus.DRAW;

@@ -56,6 +56,7 @@ export interface GameData {
   expireAt: number; 
   metadata?: {
     isRandomColor: boolean;
+    initialBoard?: string;
   };
 
   // --- Takeback / Undo Logic ---
